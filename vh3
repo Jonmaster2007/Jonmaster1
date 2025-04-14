@@ -1,0 +1,1626 @@
+
+local UserInputService = game:GetService("UserInputService")
+
+-- Create UI
+local screenGui = Instance.new("ScreenGui")
+screenGui.Parent = game.CoreGui
+screenGui.Enabled = false
+
+local keybindsFrame = Instance.new("Frame")
+keybindsFrame.Size = UDim2.new(0, 270, 0, 470) -- Proper size
+keybindsFrame.Position = UDim2.new(1, -280, 0, 50) -- Top-right corner
+keybindsFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+keybindsFrame.BorderSizePixel = 2 -- Border is back
+keybindsFrame.BorderColor3 = Color3.fromRGB(0, 145, 250) -- Border color
+keybindsFrame.Parent = screenGui
+
+local keybindsLabel = Instance.new("TextLabel")
+keybindsLabel.Text = [[Keybinds:
+X -> Toggle Aimlock
+Shift + ] -> switches headsize & aimlock target (vampire only - hunters & survivors only) default on vampires only
+Ctrl + ] -> Toggle Player Outlines
+Shift + P -> Toggles Inventory Esp UI
+Ctrl + [ -> Decrease Headsize
+Shift + [ -> Increase Headsize 
+Ctrl + Shift + P -> Toggles Headsize (loop)
+Ctrl + F3 -> Toggle Daytime
+Shift + M -> toggles autoheal need bandages
+Ctrl + Backslash -> toggles a remote so u can punch everyone & u need vampire (buggy)
+Shift + Backslash -> toggles a remote that lets u punch vampire without having to see him transform
+Ctrl + Shift + BackSlash -> makes u vampire when hit with human skin & u need vampire
+Ctrl + P -> Toggles Auto Gun Pickup]]
+keybindsLabel.Size = UDim2.new(1, 0, 0, 420) -- Fits all text properly
+keybindsLabel.Position = UDim2.new(0, 0, 0, 5)
+keybindsLabel.BackgroundTransparency = 1
+keybindsLabel.TextColor3 = Color3.fromRGB(120, 175, 255) -- Lighter blue text
+keybindsLabel.TextWrapped = true
+keybindsLabel.TextScaled = false
+keybindsLabel.Font = Enum.Font.SourceSansBold
+keybindsLabel.TextSize = 17 -- Readable text size
+keybindsLabel.Parent = keybindsFrame
+
+local creditLabel = Instance.new("TextLabel")
+creditLabel.Text = "Created by Jonmaster1"
+creditLabel.Size = UDim2.new(1, 0, 0, 30) -- Slightly taller
+creditLabel.Position = UDim2.new(0, 0, 0, 425) -- Fully below keybinds
+creditLabel.BackgroundTransparency = 1
+creditLabel.TextColor3 = Color3.fromRGB(0, 185, 45) -- Green color
+creditLabel.TextScaled = false
+creditLabel.Font = Enum.Font.SourceSansBold
+creditLabel.TextSize = 27 -- **Increased text size**
+creditLabel.Parent = keybindsFrame
+
+-- Make UI draggable
+local dragging, dragInput, dragStart, startPos
+
+keybindsFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = keybindsFrame.Position
+
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+keybindsFrame.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        keybindsFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
+-- Toggle UI visibility with Ctrl + L (Shift must NOT be held)
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+
+    if input.KeyCode == Enum.KeyCode.L 
+    and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) 
+    and not UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+        screenGui.Enabled = not screenGui.Enabled
+    end
+end)
+
+
+
+
+
+
+local players = game:GetService("Players")
+local userInputService = game:GetService("UserInputService")
+local runService = game:GetService("RunService")
+
+local localPlayer = players.LocalPlayer
+local isAllPlayersToggled = false
+local isMode3PlayersToggled = true
+
+local function sendNotification(feature, state)
+    local message = state and feature .. " = ON" or feature .. " = OFF"
+    game.StarterGui:SetCore("SendNotification", {
+        Title = "Toggle Status",
+        Text = message,
+        Icon = "",
+        Duration = 3
+    })
+end
+
+local function getMode3Players()
+    local mode3Players = {}
+
+    for _, player in pairs(players:GetPlayers()) do
+        if player ~= localPlayer and player.Character then
+            local modeValue = workspace.GameStuff.Round.Ingame:FindFirstChild(player.Name) and workspace.GameStuff.Round.Ingame[player.Name].Mode.Value
+            if modeValue == 3 then
+                table.insert(mode3Players, player.Name)
+            end
+        end
+    end
+
+    return mode3Players
+end
+
+local function getAllPlayersExceptMe()
+    local allPlayers = {}
+    for _, player in pairs(players:GetPlayers()) do
+        if player ~= localPlayer then
+            table.insert(allPlayers, player.Name)
+        end
+    end
+    return allPlayers
+end
+
+local function applySeenVampireEffect(targets)
+    for _, playerName in pairs(targets) do
+        local args = { [1] = playerName }
+        workspace:WaitForChild("Events"):WaitForChild("Character"):WaitForChild("SeenVampire"):FireServer(unpack(args))
+    end
+end
+
+userInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+
+    if input.KeyCode == Enum.KeyCode.BackSlash then
+        if userInputService:IsKeyDown(Enum.KeyCode.LeftControl) and not userInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+            isAllPlayersToggled = not isAllPlayersToggled
+            isMode3PlayersToggled = false
+            sendNotification("Auto SeenVampire (All Except You)", isAllPlayersToggled)
+        elseif userInputService:IsKeyDown(Enum.KeyCode.LeftShift) and not userInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+            isMode3PlayersToggled = not isMode3PlayersToggled
+            isAllPlayersToggled = false
+            sendNotification("Auto SeenVampire (Vampires only)", isMode3PlayersToggled)
+        end
+    end
+end)
+
+runService.Heartbeat:Connect(function()
+    if isAllPlayersToggled then
+        applySeenVampireEffect(getAllPlayersExceptMe())
+    end
+    if isMode3PlayersToggled then
+        applySeenVampireEffect(getMode3Players())
+    end
+    task.wait(1)
+end)
+
+
+local player = game.Players.LocalPlayer
+local userInputService = game:GetService("UserInputService")
+
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+
+local spamming = false
+local autoBandageEnabled = true 
+local spamLoop = nil
+
+local function sendNotification(state)
+    local message = state and "Auto Bandage = ON" or "Auto Bandage = OFF"
+    game.StarterGui:SetCore("SendNotification", {
+        Title = "Toggle Status",
+        Text = message,
+        Icon = "",
+        Duration = 3
+    })
+end
+
+local function useBandage()
+    local args = {
+        [1] = workspace:WaitForChild(player.Name, 9e9)
+    }
+    workspace:WaitForChild("Events", 9e9):WaitForChild("Character", 9e9):WaitForChild("Abilities", 9e9):WaitForChild("Bandages", 9e9):WaitForChild("Use", 9e9):FireServer(unpack(args))
+end
+
+local function startSpamming()
+    if spamming or not autoBandageEnabled then return end
+    spamming = true
+    
+    spamLoop = task.spawn(function()
+        while spamming do
+            useBandage()
+            task.wait(0.5)
+        end
+    end)
+end
+
+local function stopSpamming()
+    spamming = false
+    if spamLoop then
+        task.cancel(spamLoop)
+        spamLoop = nil
+    end
+end
+
+local function onHealthChanged()
+    if not autoBandageEnabled then return end -- Only work if toggle is ON
+
+    local maxHealth = humanoid.MaxHealth
+    local currentHealth = humanoid.Health
+    local healthThreshold = maxHealth * 0.65  -- 70% of max health
+
+    if currentHealth < healthThreshold then
+        startSpamming()
+    else
+        stopSpamming()
+    end
+end
+
+userInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+
+    if input.KeyCode == Enum.KeyCode.M and userInputService:IsKeyDown(Enum.KeyCode.LeftShift) and not userInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+        autoBandageEnabled = not autoBandageEnabled
+        sendNotification(autoBandageEnabled)
+
+        if not autoBandageEnabled then
+            stopSpamming()
+        else
+            onHealthChanged()
+        end
+    end
+end)
+
+humanoid.HealthChanged:Connect(onHealthChanged)
+onHealthChanged()
+
+player.CharacterAdded:Connect(function(newCharacter)
+    character = newCharacter
+    humanoid = character:WaitForChild("Humanoid")
+    humanoid.HealthChanged:Connect(onHealthChanged)
+    
+    stopSpamming()
+    onHealthChanged()
+end)
+
+
+
+
+local userInputService = game:GetService("UserInputService")
+
+local function applyVampirify()
+    local args = { [1] = true }
+    workspace:WaitForChild("Events", 9e9):WaitForChild("Vampire", 9e9):WaitForChild("Vampirify", 9e9):FireServer(unpack(args))
+end
+
+userInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+
+    if input.KeyCode == Enum.KeyCode.BackSlash and 
+       userInputService:IsKeyDown(Enum.KeyCode.LeftControl) and 
+       userInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+        applyVampirify()
+    end
+end)
+
+
+
+
+
+
+workspace.Events.Character.AFKWorker:Destroy() -- makes u never afk
+
+game:GetService("ReplicatedStorage").Scripts.Animation.ScreenEffect_Peppersprayed:Destroy() -- removes pepperspray blindness
+
+local function destroy(instance)
+    if instance then
+        instance:Destroy()
+    end
+end
+
+if workspace:FindFirstChild("Events") and workspace.Events:FindFirstChild("Character") and workspace.Events.Character:FindFirstChild("Damage") then
+    destroy(workspace.Events.Character.Damage:FindFirstChild("DrownDamage"))
+    destroy(workspace.Events.Character.Damage:FindFirstChild("FireDamage"))
+    destroy(workspace.Events.Character.Damage:FindFirstChild("SmokeDamage"))
+end
+
+local replicatedStorage = game:GetService("ReplicatedStorage")
+
+if replicatedStorage:FindFirstChild("Scripts") and replicatedStorage.Scripts:FindFirstChild("Animation") then
+    local animationScripts = replicatedStorage.Scripts.Animation
+    destroy(animationScripts:FindFirstChild("ScreenEffect_Peppersprayed"))
+    destroy(animationScripts:FindFirstChild("AnimSC_EscapeStun"))
+    destroy(animationScripts:FindFirstChild("AnimSC_PeppersprayedStun"))
+    destroy(animationScripts:FindFirstChild("AnimSC_StunCamShift"))
+    destroy(animationScripts:FindFirstChild("AnimSC_StunCamSnap"))
+    destroy(animationScripts:FindFirstChild("AnimSC_Stunned"))
+    destroy(animationScripts:FindFirstChild("ScreenEffect_ShockwaveStunned"))
+end
+
+if replicatedStorage:FindFirstChild("Effects") and replicatedStorage.Effects:FindFirstChild("Model") then
+    local effectsModel = replicatedStorage.Effects.Model
+    destroy(effectsModel:FindFirstChild("FirewallReticle"))
+    destroy(effectsModel:FindFirstChild("ParticleSmokeCloud"))
+    destroy(effectsModel:FindFirstChild("PhysicalSmokeCloud"))
+    destroy(effectsModel:FindFirstChild("CrystalCastReticle"))
+end
+
+
+
+
+
+
+local aim_config = _G.JALON_AIMCONFIG or {
+    Enabled = true,
+    KeyActivation = Enum.KeyCode.X,  
+    FOV = 1377,
+    DistanceCheck = true,
+    VisibleCheck = true,
+    Smoothness = 0, 
+    ToggleAimLock = true,  
+    aimPartTarget = "Head"
+}
+_G.JALON_AIMCONFIG = aim_config
+
+local input_service = game:GetService("UserInputService")
+local players = game:GetService("Players")
+local run_service = game:GetService("RunService")
+local starter_gui = game:GetService("StarterGui")
+local workspace = game:GetService("Workspace")
+
+local camera = workspace.CurrentCamera
+local player = players.LocalPlayer
+local fovCircle, targetBox = Drawing.new("Circle"), Drawing.new("Square")
+
+local current_target
+local is_locked_on = false
+local aim_toggled = false  
+local target_mode = 1
+local valid_targets = {}  
+
+local function notify(message)
+    starter_gui:SetCore("SendNotification", {
+        Title = "AimLock Mode",
+        Text = message,
+        Duration = 2
+    })
+end
+
+local function get_player_mode(plr)
+    local round = workspace.GameStuff and workspace.GameStuff.Round and workspace.GameStuff.Round.Ingame
+    if round and round:FindFirstChild(plr.Name) then
+        return round[plr.Name].Mode.Value
+    end
+    return nil
+end
+
+local function get_mode_color(mode)
+    if mode == 1 then
+        return Color3.fromRGB(0, 185, 35)
+    elseif mode == 2 then
+        return Color3.fromRGB(0, 145, 250)
+    elseif mode == 3 then
+        return Color3.fromRGB(158, 60, 214)
+    end
+    return Color3.fromRGB(255, 255, 255)
+end
+
+local function is_valid_mode(modeValue)
+    if target_mode == 1 then
+        return modeValue == 3
+    elseif target_mode == 2 then
+        return modeValue == 1 or modeValue == 2
+    end
+    return false
+end
+
+local function is_player_valid(plrArg)
+    local plrChar = plrArg.Character
+    local humanoid = plrChar and plrChar:FindFirstChildOfClass("Humanoid")
+    local target_part = plrChar and plrChar:FindFirstChild(aim_config.aimPartTarget)
+
+    if not (plrArg ~= player and humanoid and humanoid.Health > 0 and target_part) then
+        return false, nil
+    end
+
+    local modeValue = get_player_mode(plrArg)
+    if modeValue and is_valid_mode(modeValue) then
+        return true, target_part
+    end
+    return false, nil
+end
+
+local function update_valid_targets()
+    valid_targets = {}
+    for _, plr in players:GetPlayers() do
+        local passed, target_part = is_player_valid(plr)
+        if passed then
+            table.insert(valid_targets, {player = plr, aimPart = target_part})
+        end
+    end
+end
+
+local function get_best_target()
+    update_valid_targets()
+
+    if #valid_targets == 1 then
+        return valid_targets[1]
+    end
+
+    local closest_data = {aimPart = nil, center_dist = math.huge}
+    for _, target in pairs(valid_targets) do
+        local screen_pos, on_screen = camera:WorldToViewportPoint(target.aimPart.Position)
+        local center_screen = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+        local center_dist = (center_screen - Vector2.new(screen_pos.X, screen_pos.Y)).Magnitude
+
+        if center_dist <= aim_config.FOV and (not aim_config.VisibleCheck or on_screen) then
+            if center_dist < closest_data.center_dist then
+                closest_data = {aimPart = target.aimPart, center_dist = center_dist}
+            end
+        end
+    end
+    return closest_data.aimPart and closest_data or nil
+end
+
+targetBox.Filled = true
+targetBox.Size = Vector2.new(15, 15)
+targetBox.Thickness = 20
+targetBox.Transparency = 0.4
+
+fovCircle.Color = Color3.fromRGB(0, 144, 255)
+fovCircle.Thickness = 2
+fovCircle.Transparency = 0.6
+fovCircle.Visible = true
+
+input_service.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+
+    if input.KeyCode == Enum.KeyCode.RightBracket and (input_service:IsKeyDown(Enum.KeyCode.LeftShift) or input_service:IsKeyDown(Enum.KeyCode.RightShift)) then
+        target_mode = target_mode == 1 and 2 or 1
+
+        if target_mode == 1 then
+            notify("Now Targeting (Vampires)!")
+        else
+            notify("Now Targeting (Hunters & Survivors)!")
+        end
+
+        update_valid_targets()
+    end
+
+    if input.KeyCode == aim_config.KeyActivation then
+        if aim_config.ToggleAimLock then
+            aim_toggled = not aim_toggled
+            is_locked_on = aim_toggled
+        else
+            is_locked_on = true
+        end
+    end
+end)
+
+input_service.InputEnded:Connect(function(input, gameProcessed)
+    if input.KeyCode == aim_config.KeyActivation and not aim_config.ToggleAimLock then
+        is_locked_on = false
+        current_target = nil
+    end
+end)
+
+run_service.PreSimulation:Connect(function()
+    if not is_locked_on then
+        current_target = get_best_target()
+    end
+
+    fovCircle.Radius = aim_config.FOV
+    fovCircle.Position = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+
+    if current_target then
+        local screen_pos, on_screen = camera:WorldToViewportPoint(current_target.aimPart.Position)
+
+        local target_mode = get_player_mode(players:GetPlayerFromCharacter(current_target.aimPart.Parent))
+        targetBox.Color = get_mode_color(target_mode)
+
+        targetBox.Visible = on_screen
+        targetBox.Position = Vector2.new(screen_pos.X, screen_pos.Y) - (targetBox.Size / 2)
+
+        if is_locked_on then
+            camera.CFrame = CFrame.lookAt(camera.CFrame.Position, current_target.aimPart.Position)
+        end
+    else
+        targetBox.Visible = false
+        targetBox.Position = Vector2.new(0, 0)
+    end
+end)
+
+spawn(function()
+    while true do
+        update_valid_targets()
+        wait(1)
+    end
+end)
+
+
+
+
+
+
+
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local localPlayer = Players.LocalPlayer
+
+local headSize = 6.3
+local minHeadSize = 1
+local transparency = 0.85
+local currentSetting = 1
+local individualModifications = {}
+
+local isLooping = false
+local loopCoroutine = nil
+
+local function modifyHead(player, size, transparencyValue)
+    if not player or not player.Character then return end
+    local head = player.Character:FindFirstChild("Head")
+    if head and head:IsA("BasePart") then
+        if not individualModifications[player] then
+            individualModifications[player] = {
+                originalSize = head.Size,
+                originalTransparency = head.Transparency,
+                originalCanCollide = head.CanCollide,
+            }
+        end
+        head.Size = Vector3.new(size, size, size)
+        head.Transparency = transparencyValue
+        head.CanCollide = false
+    end
+end
+
+local function revertHead(player)
+    if not player or not player.Character then return end
+    local head = player.Character:FindFirstChild("Head")
+    if head and head:IsA("BasePart") and individualModifications[player] then
+        local original = individualModifications[player]
+        head.Size = original.originalSize
+        head.Transparency = original.originalTransparency
+        head.CanCollide = original.originalCanCollide
+        individualModifications[player] = nil
+    end
+end
+
+local function revertAllPlayers()
+    for _, player in ipairs(Players:GetPlayers()) do
+        revertHead(player)
+    end
+end
+
+local function toggleModeThreeHeadsizeLoop()
+    if isLooping then
+        isLooping = false
+        loopCoroutine = nil
+        revertAllPlayers()
+    else
+        isLooping = true
+        loopCoroutine = coroutine.create(function()
+            while isLooping do
+                for _, player in ipairs(Players:GetPlayers()) do
+                    if player ~= localPlayer and player.Character then
+                        if workspace.GameStuff.Round.Ingame:FindFirstChild(player.Name) then
+                            local modeValue = workspace.GameStuff.Round.Ingame[player.Name].Mode.Value
+                            if currentSetting == 1 and modeValue == 3 then
+                                modifyHead(player, headSize, transparency)
+                            elseif currentSetting == 2 and (modeValue == 1 or modeValue == 2) then
+                                modifyHead(player, headSize, transparency)
+                            else
+                                revertHead(player)
+                            end
+                        end
+                    end
+                end
+                task.wait(1)
+            end
+        end)
+        coroutine.resume(loopCoroutine)
+    end
+end
+
+local function increaseHeadSize()
+    if headSize < 6.3 then
+        headSize = headSize + 1
+    end
+end
+
+local function decreaseHeadSize()
+    if headSize > minHeadSize then
+        headSize = headSize - 1
+    end
+end
+
+local function toggleSetting()
+    revertAllPlayers()
+    currentSetting = currentSetting == 1 and 2 or 1
+end
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+
+    -- Change keybind to Ctrl + Shift + P
+    if input.KeyCode == Enum.KeyCode.P 
+        and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) 
+        and UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+        toggleModeThreeHeadsizeLoop()
+    end
+
+    if input.KeyCode == Enum.KeyCode.RightBracket and UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+        toggleSetting()
+    end
+
+    if input.KeyCode == Enum.KeyCode.LeftBracket and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+        decreaseHeadSize()
+    end
+
+    if input.KeyCode == Enum.KeyCode.LeftBracket and UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+        increaseHeadSize()
+    end
+end)
+
+toggleModeThreeHeadsizeLoop()
+
+
+local Lighting = game:GetService("Lighting")
+local UserInputService = game:GetService("UserInputService")
+
+local isLooping = false    
+local targetDayTime = 14   
+
+
+local function toggleDayLoop()
+    
+    isLooping = not isLooping
+
+    
+    if isLooping then
+        print("Day loop started.")
+        while isLooping do
+            Lighting.ClockTime = targetDayTime  
+            wait(0.05)  
+        end
+    else
+        print("Day loop stopped.")
+    end
+end
+
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed then
+        if input.KeyCode == Enum.KeyCode.F3 and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+            toggleDayLoop()
+        end
+    end
+end)
+
+
+
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+
+local playerOutlinesEnabled = true
+local outlineObjects = {}
+
+local defaultGreenColor = Color3.fromRGB(0, 185, 35)
+local vampireColor = Color3.fromRGB(158, 60, 214)
+local hunterColor = Color3.fromRGB(0, 145, 250)
+
+local function setOutlineColor(character, color)
+    if outlineObjects[character] then
+        outlineObjects[character]:Destroy()
+        outlineObjects[character] = nil
+    end
+
+    local highlight = Instance.new("Highlight")
+    highlight.Adornee = character
+    highlight.FillColor = color
+    highlight.OutlineColor = color
+    highlight.FillTransparency = 1
+    highlight.OutlineTransparency = 0.55
+    highlight.Parent = character
+    outlineObjects[character] = highlight
+end
+
+local function removeAllOutlines()
+    for character, highlight in pairs(outlineObjects) do
+        if highlight and highlight.Parent then
+            highlight:Destroy()
+        end
+    end
+    outlineObjects = {}
+end
+
+local function updatePlayerOutline(player)
+    if player.Character and player.Character:FindFirstChildOfClass("Humanoid") then
+        local color = defaultGreenColor
+        if workspace.GameStuff.Round.Ingame:FindFirstChild(player.Name) then
+            local modeValue = workspace.GameStuff.Round.Ingame[player.Name].Mode.Value
+            if modeValue == 1 then
+                color = defaultGreenColor
+            elseif modeValue == 2 then
+                color = hunterColor
+            elseif modeValue == 3 then
+                color = vampireColor
+            end
+        end
+        setOutlineColor(player.Character, color)
+    end
+end
+
+local function updateAllOutlines()
+    for _, player in pairs(Players:GetPlayers()) do
+        updatePlayerOutline(player)
+    end
+end
+
+local function toggleOutlines()
+    playerOutlinesEnabled = not playerOutlinesEnabled
+    if playerOutlinesEnabled then
+        updateAllOutlines()
+    else
+        removeAllOutlines()
+    end
+end
+
+-- Create a loop to update player outlines every second
+local function outlineLoop()
+    while true do
+        if playerOutlinesEnabled then
+            updateAllOutlines()
+        end
+        wait(1)  -- Wait for 1 second before updating again
+    end
+end
+
+-- Start the outline loop in a coroutine
+coroutine.wrap(outlineLoop)()
+
+UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
+    if input.KeyCode == Enum.KeyCode.RightBracket and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+        toggleOutlines()
+    end
+end)
+
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function(character)
+        if playerOutlinesEnabled then
+            updatePlayerOutline(player)
+        end
+    end)
+end)
+
+for _, player in pairs(Players:GetPlayers()) do
+    if player.Character and playerOutlinesEnabled then
+        updatePlayerOutline(player)
+    end
+    player.CharacterAdded:Connect(function(character)
+        updatePlayerOutline(player)
+    end)
+end
+
+
+
+
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+
+local localPlayer = Players.LocalPlayer
+
+local toggle = false
+
+-- Image mapping for gadgets
+local itemImages = {
+    ["Axe"] = "rbxassetid://7425895192",
+    ["Bandages"] = "http://www.roblox.com/asset/?id=5701535117",
+    ["Barricade"] = "rbxassetid://2786883916",
+    ["Baseball Bat"] = "http://www.roblox.com/asset/?id=3026099576",
+    ["Body Armour"] = "http://www.roblox.com/asset/?id=5443136193",
+    ["Bow"] = "http://www.roblox.com/asset/?id=3036446025",
+    ["Crucifix"] = "http://www.roblox.com/asset/?id=6126209763",
+    ["DNA Tester"] = "http://www.roblox.com/asset/?id=2829451395",
+    ["Defibrillator"] = "http://www.roblox.com/asset/?id=2918289189",
+    ["Drone"] = "http://www.roblox.com/asset/?id=3026105103",
+    ["Energy Drink"] = "http://www.roblox.com/asset/?id=2876704372",
+    ["Epi-Gun"] = "http://www.roblox.com/asset/?id=5443132154",
+    ["Flare"] = "http://www.roblox.com/asset/?id=4609897457",
+    ["Food Supply"] = "rbxassetid://7427525003",
+    ["Garlic"] = "http://www.roblox.com/asset/?id=2903017290",
+    ["Holy Water"] = "rbxassetid://7032955091",
+    ["Medkit"] = "http://www.roblox.com/asset/?id=2955756932",
+    ["Morphine"] = "http://www.roblox.com/asset/?id=4549606019",
+    ["Net"] = "http://www.roblox.com/asset/?id=5443136839",
+    ["Night Vision Goggles"] = "http://www.roblox.com/asset/?id=2829452410",
+    ["Pan"] = "http://www.roblox.com/asset/?id=4549604592",
+    ["Pepperspray"] = "http://www.roblox.com/asset/?id=2911214436",
+    ["Pocket Knife"] = "rbxassetid://2786884613",
+    ["Slingshot"] = "http://www.roblox.com/asset/?id=5443130929",
+    ["Smoke Grenade"] = "http://www.roblox.com/asset/?id=2877059072",
+    ["Stake"] = "rbxassetid://10959211934",
+    ["Surge-Glove"] = "rbxassetid://13502700059",
+    ["Taser"] = "http://www.roblox.com/asset/?id=4549604288"
+}
+
+
+-- Detect new players joining and update billboards dynamically
+game:GetService("Players").PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function()
+        task.wait(1) -- Small delay to allow Character to load
+        updateBillboardUI(player)
+    end)
+end)
+
+-- Create UI
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "InventoryViewer"
+screenGui.Parent = game.CoreGui
+screenGui.Enabled = false
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 400, 0, 50) 
+frame.Position = UDim2.new(0.35, 0, 0.25, 0)
+frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+frame.BackgroundTransparency = 0.4 
+frame.BorderSizePixel = 0
+frame.Parent = screenGui
+frame.Active = true
+frame.Draggable = true 
+frame.AutomaticSize = Enum.AutomaticSize.Y 
+
+local layout = Instance.new("UIListLayout")
+layout.Padding = UDim.new(0, 5)
+layout.Parent = frame
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 30)
+title.BackgroundTransparency = 1
+title.Text = "Player Inventories"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.Font = Enum.Font.SourceSansBold
+title.TextSize = 20
+title.Parent = frame
+
+local playerFrames = {}
+
+-- Function to update a single player's inventory
+local defaultGreenColor = Color3.fromRGB(0, 185, 35)
+local vampireColor = Color3.fromRGB(158, 60, 214)
+local hunterColor = Color3.fromRGB(0, 145, 250)
+
+local function getPlayerColor(player)
+    if workspace.GameStuff.Round.Ingame:FindFirstChild(player.Name) then
+        local modeValue = workspace.GameStuff.Round.Ingame[player.Name].Mode.Value
+        if modeValue == 1 then
+            return defaultGreenColor -- Survivor
+        elseif modeValue == 2 then
+            return hunterColor -- Hunter
+        elseif modeValue == 3 then
+            return vampireColor -- Vampire
+        end
+    end
+    return defaultGreenColor 
+end
+
+local function updatePlayerInventory(player)
+    local playerFrame = playerFrames[player] or Instance.new("Frame")
+    playerFrame.Size = UDim2.new(1, 0, 0, 40)
+    playerFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    playerFrame.BackgroundTransparency = 0.4
+    playerFrame.BorderSizePixel = 0
+    playerFrame.Parent = frame
+
+    if not playerFrames[player] then
+        playerFrames[player] = playerFrame
+    else
+        for _, child in pairs(playerFrame:GetChildren()) do
+            if not child:IsA("UIListLayout") then
+                child:Destroy()
+            end
+        end
+    end
+
+    local playerColor = getPlayerColor(player)
+
+    -- Determine Alive/Dead status
+    local statusText = "[ALIVE]"
+    local statusColor = Color3.fromRGB(0, 179, 60) -- Green for alive
+
+    if player.Character and player.Character:FindFirstChild("HumanoidRootPart") and
+       localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local playerPosition = player.Character.HumanoidRootPart.Position
+        local localPlayerPosition = localPlayer.Character.HumanoidRootPart.Position
+        local distance = (playerPosition - localPlayerPosition).Magnitude
+
+        if distance > 750 then -- Distance check
+            statusText = "[DEAD]"
+            statusColor = Color3.fromRGB(126, 2, 2) -- Red for dead
+        end
+    end
+
+    -- Revive button (outside UI, to the left of Alive/Dead status)
+    local reviveButton = Instance.new("TextButton")
+    reviveButton.Size = UDim2.new(0.15, 0, 0.75, 0)
+    reviveButton.Position = UDim2.new(-0.3, 0, 0.125, 0) -- Placed outside UI
+    reviveButton.Text = "Revive"
+    reviveButton.TextColor3 = Color3.fromRGB(235, 95, 95)
+    reviveButton.Font = Enum.Font.SourceSansBold
+    reviveButton.TextScaled = true
+    reviveButton.BackgroundColor3 = Color3.fromRGB(255, 85, 85)
+    reviveButton.BorderSizePixel = 0
+    reviveButton.Parent = playerFrame
+    reviveButton.Transparency = 0.85
+    reviveButton.TextTransparency = 0
+
+    reviveButton.MouseButton1Click:Connect(function()
+        local name = player.Name -- Use player's name when "Revive" is clicked
+        for i, v in pairs(game.Players:GetChildren()) do
+            if string.find(string.lower(v.Name), string.lower(name)) then
+                local args = {
+                    [1] = v.Name;
+                }
+                workspace:WaitForChild("Events", 9e9):WaitForChild("Character", 9e9):WaitForChild("Abilities", 9e9):WaitForChild("Defibrillator", 9e9):WaitForChild("Use", 9e9):FireServer(unpack(args))
+                break
+            end
+        end
+    end)
+
+    -- Status text positioned inside the UI but to the left
+    local statusLabel = Instance.new("TextLabel")
+    statusLabel.Size = UDim2.new(0.135, 0, 0.75, 0) -- Slightly smaller
+    statusLabel.Position = UDim2.new(-0.15, 0, 0.125, 0) -- Adjusted slightly
+    statusLabel.Text = statusText
+    statusLabel.TextColor3 = statusColor
+    statusLabel.Font = Enum.Font.SourceSansBold
+    statusLabel.TextScaled = true
+    statusLabel.BackgroundTransparency = 1
+    statusLabel.Parent = playerFrame
+
+    -- Player name
+    local playerName = Instance.new("TextLabel")
+    playerName.Size = UDim2.new(0.25, 0, 1, 0)
+    playerName.Text = player.Name
+    playerName.TextColor3 = playerColor
+    playerName.Font = Enum.Font.SourceSansBold
+    playerName.TextScaled = true
+    playerName.BackgroundTransparency = 1
+    playerName.Parent = playerFrame
+
+    -- Inventory items container
+    local itemsFrame = Instance.new("Frame")
+    itemsFrame.Size = UDim2.new(0.75, 0, 1, 0)
+    itemsFrame.Position = UDim2.new(0.25, 0, 0, 0)
+    itemsFrame.BackgroundTransparency = 1
+    itemsFrame.Parent = playerFrame
+
+    local itemLayout = Instance.new("UIListLayout")
+    itemLayout.FillDirection = Enum.FillDirection.Horizontal
+    itemLayout.Padding = UDim.new(0, 5)
+    itemLayout.Parent = itemsFrame
+
+    -- Inventory handling
+    local backpack = player:FindFirstChild("Backpack")
+    if backpack then
+        local items = {}
+        for _, item in pairs(backpack:GetChildren()) do
+            table.insert(items, item.Name)
+        end
+
+        for i = 1, 6 do
+            local itemName = items[i]
+            if itemName then
+                local itemInstance = backpack:FindFirstChild(itemName)
+                local displayName = itemName
+                local textColor = Color3.fromRGB(180, 180, 180)
+
+                if itemInstance then
+                    local itemNameValue = itemInstance:FindFirstChild("ItemName")
+                    local foodNameValue = itemInstance:FindFirstChild("FoodName")
+
+                    if itemNameValue and itemNameValue:IsA("StringValue") then
+                        displayName = itemNameValue.Value
+                    elseif foodNameValue and foodNameValue:IsA("StringValue") then
+                        displayName = foodNameValue.Value
+                    end
+
+                    if displayName == "Bandaid" then
+                        textColor = Color3.fromRGB(0, 51, 153)
+                    elseif displayName == "Vitamins" then
+                        textColor = Color3.fromRGB(158, 60, 214)
+                    elseif foodNameValue then
+                        textColor = Color3.fromRGB(0, 145, 250)
+                    end
+                end
+
+                local itemImage = itemImages[itemName]
+
+                if itemImage then
+                    local itemIcon = Instance.new("ImageLabel")
+                    itemIcon.Size = UDim2.new(0, 50, 0, 40)
+                    itemIcon.Image = itemImage
+                    itemIcon.BackgroundTransparency = 0.85
+                    itemIcon.Parent = itemsFrame
+                else
+                    local itemLabel = Instance.new("TextLabel")
+                    itemLabel.Size = UDim2.new(0, 50, 0, 40)
+                    itemLabel.Text = displayName
+                    itemLabel.TextColor3 = textColor
+                    itemLabel.Font = Enum.Font.SourceSansBold
+                    itemLabel.TextScaled = true
+                    itemLabel.BackgroundTransparency = 0.85
+                    itemLabel.Parent = itemsFrame
+                end
+            end
+        end
+    end
+
+    -- Revive Random button (inside the UI next to "Player Inventories")
+    if not frame:FindFirstChild("ReviveRandomButton") then
+        local reviveRandomButton = Instance.new("TextButton")
+        reviveRandomButton.Name = "ReviveRandomButton"
+        reviveRandomButton.Size = UDim2.new(1, 0, 0.1, 0)
+        reviveRandomButton.Position = UDim2.new(0, 0, 0, 0) -- Inside UI next to "Player Inventories"
+        reviveRandomButton.Text = "Revive Random"
+        reviveRandomButton.TextColor3 = Color3.fromRGB(0, 140, 255)
+        reviveRandomButton.Font = Enum.Font.SourceSansBold
+        reviveRandomButton.TextScaled = true
+        reviveRandomButton.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+        reviveRandomButton.BorderSizePixel = 0
+        reviveRandomButton.Parent = frame
+        reviveRandomButton.Transparency = 0.85
+        reviveRandomButton.TextTransparency = 0
+
+        reviveRandomButton.MouseButton1Click:Connect(function()
+            -- Revive random player if defib kit is in inventory
+            local players = game:GetService("Players")
+            for _, player in pairs(players:GetPlayers()) do
+                local args = {
+                    [1] = player.Name;
+                }
+                workspace:WaitForChild("Events", 9e9):WaitForChild("Character", 9e9):WaitForChild("Abilities", 9e9):WaitForChild("Defibrillator", 9e9):WaitForChild("Use", 9e9):FireServer(unpack(args))
+            end
+        end)
+    end
+
+    -- Locate the Perk and VampireAbility values
+    local perkValue = "None"
+    local vampireAbilityValue = "None"
+    
+    local playerSave = player:FindFirstChild("PlayerSave")
+    if playerSave then
+        local loadout = playerSave:FindFirstChild("Loadout")
+        if loadout then
+            local perk = loadout:FindFirstChild("Perk")
+            local vampireAbility = loadout:FindFirstChild("VampireAbility")
+
+            if perk and perk:IsA("StringValue") then
+                perkValue = perk.Value
+            end
+            if vampireAbility and vampireAbility:IsA("StringValue") then
+                vampireAbilityValue = vampireAbility.Value
+            end
+        end
+    end
+
+    -- Create Perk Display Label
+    local perkLabel = Instance.new("TextLabel")
+    perkLabel.Size = UDim2.new(0.15, 0, 0.75, 0)
+    perkLabel.Position = UDim2.new(-0.45, 0, 0.125, 0)  -- Positioned further left
+    perkLabel.Text = "" .. perkValue
+    perkLabel.TextColor3 = Color3.fromRGB(204, 163, 0) -- Yellow for visibility
+    perkLabel.Font = Enum.Font.SourceSansBold
+    perkLabel.TextScaled = true
+    perkLabel.BackgroundTransparency = 1
+    perkLabel.Parent = playerFrame
+
+    -- Create Vampire Ability Display Label
+    local vampireAbilityLabel = Instance.new("TextLabel")
+    vampireAbilityLabel.Size = UDim2.new(0.15, 0, 0.75, 0)
+    vampireAbilityLabel.Position = UDim2.new(-0.6, 0, 0.125, 0) -- Positioned even further left
+    vampireAbilityLabel.Text = "" .. vampireAbilityValue
+    vampireAbilityLabel.TextColor3 = Color3.fromRGB(102, 0, 128) -- Red for vampire theme
+    vampireAbilityLabel.Font = Enum.Font.SourceSansBold
+    vampireAbilityLabel.TextScaled = true
+    vampireAbilityLabel.BackgroundTransparency = 1
+    vampireAbilityLabel.Parent = playerFrame
+
+    -- Loop to update Perk and VampireAbility every second
+    spawn(function()
+        while true do
+            wait(1)  -- Wait for 1 second before updating
+            local updatedPerkValue = "None"
+            local updatedVampireAbilityValue = "None"
+            
+            local playerSave = player:FindFirstChild("PlayerSave")
+            if playerSave then
+                local loadout = playerSave:FindFirstChild("Loadout")
+                if loadout then
+                    local perk = loadout:FindFirstChild("Perk")
+                    local vampireAbility = loadout:FindFirstChild("VampireAbility")
+
+                    if perk and perk:IsA("StringValue") then
+                        updatedPerkValue = perk.Value
+                    end
+                    if vampireAbility and vampireAbility:IsA("StringValue") then
+                        updatedVampireAbilityValue = vampireAbility.Value
+                    end
+                end
+            end
+            
+            perkLabel.Text = "" .. updatedPerkValue
+            vampireAbilityLabel.Text = "" .. updatedVampireAbilityValue
+        end
+    end)
+  -- Fetch Level from GameStuff
+  local levelValue = "N/A"
+  local gameStuff = game.Workspace:FindFirstChild("GameStuff")
+  if gameStuff then
+    local round = gameStuff:FindFirstChild("Round")
+    if round then
+      local ingame = round:FindFirstChild("Ingame")
+      if ingame then
+        local playerData = ingame:FindFirstChild(player.Name)
+        if playerData then
+          local level = playerData:FindFirstChild("Level")
+          if level and level:IsA("IntValue") then
+            levelValue = tostring(level.Value)
+          end
+        end
+      end
+    end
+  end
+
+  -- Fetch GunType from Players
+  local gunTypeValue = "None"
+  local playerData = game.Players:FindFirstChild(player.Name)
+  if playerData then
+    local playerSave = playerData:FindFirstChild("PlayerSave")
+    if playerSave then
+      local loadout = playerSave:FindFirstChild("Loadout")
+      if loadout then
+        local gunType = loadout:FindFirstChild("GunType")
+        if gunType and gunType:IsA("StringValue") then
+          gunTypeValue = gunType.Value
+        end
+      end
+    end
+  end
+
+  -- Fetch Gadget1 & Gadget2
+  local gadget1Value = "None"
+  local gadget2Value = "None"
+  if playerSave then
+    local loadout = playerSave:FindFirstChild("Loadout")
+    if loadout then
+      local gadget1 = loadout:FindFirstChild("Gadget1")
+      local gadget2 = loadout:FindFirstChild("Gadget2")
+
+      if gadget1 and gadget1:IsA("StringValue") then
+        gadget1Value = gadget1.Value
+      end
+      if gadget2 and gadget2:IsA("StringValue") then
+        gadget2Value = gadget2.Value
+      end
+    end
+  end
+
+  -- Create Level Label
+  local levelLabel = Instance.new("TextLabel")
+  levelLabel.Size = UDim2.new(0.15, 0, 0.75, 0)
+  levelLabel.Position = UDim2.new(1, 0, 0.125, 0)
+  levelLabel.Text = "" .. levelValue
+  levelLabel.TextColor3 = Color3.fromRGB(0, 153, 153)
+  levelLabel.Font = Enum.Font.SourceSansBold
+  levelLabel.TextScaled = true
+  levelLabel.BackgroundTransparency = 1
+  levelLabel.Parent = playerFrame
+
+  -- Create GunType Label
+  local gunTypeLabel = Instance.new("TextLabel")
+  gunTypeLabel.Size = UDim2.new(0.15, 0, 0.75, 0)
+  gunTypeLabel.Position = UDim2.new(1.15, 0, 0.125, 0)
+  gunTypeLabel.Text = "" .. gunTypeValue
+  gunTypeLabel.TextColor3 = Color3.fromRGB(0, 77, 153)
+  gunTypeLabel.Font = Enum.Font.SourceSansBold
+  gunTypeLabel.TextScaled = true
+  gunTypeLabel.BackgroundTransparency = 1
+  gunTypeLabel.Parent = playerFrame
+
+  -- Gadget1 Image or Text
+  local gadget1Image = itemImages[gadget1Value]
+  if gadget1Image then
+    local gadget1Icon = Instance.new("ImageLabel")
+    gadget1Icon.Size = UDim2.new(0, 50, 0, 40)
+    gadget1Icon.Position = UDim2.new(1.35, 0, 0.125, 0)
+    gadget1Icon.Image = gadget1Image
+    gadget1Icon.BackgroundTransparency = 0.85
+    gadget1Icon.Parent = playerFrame
+  else
+    local gadget1Label = Instance.new("TextLabel")
+    gadget1Label.Size = UDim2.new(0, 50, 0, 40)
+    gadget1Label.Position = UDim2.new(1.35, 0, 0.125, 0)
+    gadget1Label.Text = gadget1Value
+    gadget1Label.TextColor3 = Color3.fromRGB(100, 255, 100)
+    gadget1Label.Font = Enum.Font.SourceSansBold
+    gadget1Label.TextScaled = true
+    gadget1Label.BackgroundTransparency = 0.85
+    gadget1Label.Parent = playerFrame
+  end
+
+  -- Gadget2 Image or Text
+  local gadget2Image = itemImages[gadget2Value]
+  if gadget2Image then
+    local gadget2Icon = Instance.new("ImageLabel")
+    gadget2Icon.Size = UDim2.new(0, 50, 0, 40)
+    gadget2Icon.Position = UDim2.new(1.5, 0, 0.125, 0)
+    gadget2Icon.Image = gadget2Image
+    gadget2Icon.BackgroundTransparency = 0.85
+    gadget2Icon.Parent = playerFrame
+  else
+    local gadget2Label = Instance.new("TextLabel")
+    gadget2Label.Size = UDim2.new(0, 50, 0, 40)
+    gadget2Label.Position = UDim2.new(1.5, 0, 0.125, 0)
+    gadget2Label.Text = gadget2Value
+    gadget2Label.TextColor3 = Color3.fromRGB(255, 100, 100)
+    gadget2Label.Font = Enum.Font.SourceSansBold
+    gadget2Label.TextScaled = true
+    gadget2Label.BackgroundTransparency = 0.85
+    gadget2Label.Parent = playerFrame
+  end
+
+  -- Update Loop
+  spawn(function()
+    while true do
+      wait(1)  -- Refresh every second
+      
+      -- Update Level
+      local updatedLevelValue = "N/A"
+      local gameStuff = game.Workspace:FindFirstChild("GameStuff")
+      if gameStuff then
+        local round = gameStuff:FindFirstChild("Round")
+        if round then
+          local ingame = round:FindFirstChild("Ingame")
+          if ingame then
+            local playerData = ingame:FindFirstChild(player.Name)
+            if playerData then
+              local level = playerData:FindFirstChild("Level")
+              if level and level:IsA("IntValue") then
+                updatedLevelValue = tostring(level.Value)
+              end
+            end
+          end
+        end
+      end
+        -- Update Level inside the loop
+        local updatedLevelValue = "N/A"
+        local gameStuff = game.Workspace:FindFirstChild("GameStuff")
+        if gameStuff then
+            local round = gameStuff:FindFirstChild("Round")
+            if round then
+                local ingame = round:FindFirstChild("Ingame")
+                if ingame then
+                    local playerData = ingame:FindFirstChild(player.Name)
+                    if playerData then
+                        local level = playerData:FindFirstChild("Level")
+                        if level and level:IsA("IntValue") then
+                            updatedLevelValue = tostring(level.Value)
+                        end
+                    end
+                end
+            end
+        end
+        levelLabel.Text = "" .. updatedLevelValue
+      -- Update GunType
+      local updatedGunTypeValue = "None"
+      if playerSave then
+        local loadout = playerSave:FindFirstChild("Loadout")
+        if loadout then
+          local gunType = loadout:FindFirstChild("GunType")
+          if gunType and gunType:IsA("StringValue") then
+            updatedGunTypeValue = gunType.Value
+          end
+        end
+      end
+      gunTypeLabel.Text = "" .. updatedGunTypeValue
+
+      -- Update Gadgets
+      local updatedGadget1Value = "None"
+      local updatedGadget2Value = "None"
+      if playerSave then
+        local loadout = playerSave:FindFirstChild("Loadout")
+        if loadout then
+          local gadget1 = loadout:FindFirstChild("Gadget1")
+          local gadget2 = loadout:FindFirstChild("Gadget2")
+
+          if gadget1 and gadget1:IsA("StringValue") then
+            updatedGadget1Value = gadget1.Value
+          end
+          if gadget2 and gadget2:IsA("StringValue") then
+            updatedGadget2Value = gadget2.Value
+          end
+        end
+      end
+
+      gadget1Label.Text = updatedGadget1Value
+      gadget2Label.Text = updatedGadget2Value
+    end
+  end)
+end
+
+
+local function reviveSpecificPlayer(playerName)
+    for _, player in pairs(game.Players:GetChildren()) do
+        if string.find(string.lower(player.Name), string.lower(playerName)) then
+            local args = {
+                [1] = player.Name;
+            }
+            workspace:WaitForChild("Events", 9e9)
+                :WaitForChild("Character", 9e9)
+                :WaitForChild("Abilities", 9e9)
+                :WaitForChild("Defibrillator", 9e9)
+                :WaitForChild("Use", 9e9)
+                :FireServer(unpack(args))
+        end
+    end
+end
+
+local function reviveRandomPlayer()
+    local players = game:GetService("Players"):GetPlayers()
+    if #players > 0 then
+        local randomPlayer = players[math.random(1, #players)]
+        local args = {
+            [1] = randomPlayer.Name;
+        }
+        workspace:WaitForChild("Events", 9e9)
+            :WaitForChild("Character", 9e9)
+            :WaitForChild("Abilities", 9e9)
+            :WaitForChild("Defibrillator", 9e9)
+            :WaitForChild("Use", 9e9)
+            :FireServer(unpack(args))
+    end
+end
+
+-- Function to update all player inventories
+local function updateInventoryUI()
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= localPlayer then
+            updatePlayerInventory(player)
+        end
+    end
+end
+
+-- Remove UI when a player leaves
+Players.PlayerRemoving:Connect(function(player)
+    if playerFrames[player] then
+        playerFrames[player]:Destroy()
+        playerFrames[player] = nil
+    end
+end)
+
+UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
+    if gameProcessedEvent then return end
+
+    -- Shift + P to toggle
+    if input.KeyCode == Enum.KeyCode.P and UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+        toggle = not toggle
+        screenGui.Enabled = toggle
+
+        if toggle then
+            updateInventoryUI()
+        end
+    end
+end)
+
+-- Auto-update every second
+task.spawn(function()
+    while true do
+        if toggle then
+            updateInventoryUI()
+        end
+        task.wait(1)
+    end
+end)
+
+
+
+
+
+
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+
+local checkingEnabled = true
+local cooldownTime = 3
+local maxTeleportDistance = 750 -- Max distance allowed for teleporting
+local teleportedPickups = {}
+
+local function sendNotification(message)
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "GunPickup Teleporter",
+        Text = message,
+        Icon = "rbxassetid://1234567890",
+        Duration = 3
+    })
+end
+
+local function playerHasGun(player)
+    local gunName = "Gun"
+    if player.Backpack:FindFirstChild(gunName) then
+        return true
+    end
+    if player.Character and player.Character:FindFirstChild(gunName) then
+        return true
+    end
+    return false
+end
+
+local function isPlayerInMode3(player)
+    local roundData = workspace.GameStuff.Round.Ingame:FindFirstChild(player.Name)
+    return roundData and roundData.Mode.Value == 3
+end
+
+-- Find the closest gun pickup within 750 studs
+local function findClosestGunPickup(player)
+    local character = player.Character
+    if not character or not character:FindFirstChild("HumanoidRootPart") then
+        return nil
+    end
+
+    local rootPart = character.HumanoidRootPart
+    local closestGun = nil
+    local minDistance = math.huge
+
+    for _, gunPickup in pairs(Workspace.GameStuff.Entities:GetChildren()) do
+        if gunPickup.Name == "GunPickup" then
+            local lastTeleportTime = teleportedPickups[gunPickup] or 0
+            local distance = (gunPickup.Position - rootPart.Position).Magnitude
+
+            if distance <= maxTeleportDistance and os.time() - lastTeleportTime >= cooldownTime then
+                if distance < minDistance then
+                    minDistance = distance
+                    closestGun = gunPickup
+                end
+            end
+        end
+    end
+
+    return closestGun
+end
+
+local function teleportPlayerToGunPickup(player, gunPickup)
+    local character = player.Character
+    if character and character:FindFirstChild("HumanoidRootPart") then
+        wait(0.05) -- Small delay before teleporting
+        character:SetPrimaryPartCFrame(CFrame.new(gunPickup.Position))
+        teleportedPickups[gunPickup] = os.time() -- Track when we teleported to this gun
+    end
+end
+
+local function handleGunPickup()
+    local player = Players.LocalPlayer
+    if not playerHasGun(player) and not isPlayerInMode3(player) then
+        local gunPickup = findClosestGunPickup(player)
+        if gunPickup then
+            teleportPlayerToGunPickup(player, gunPickup)
+        end
+    end
+end
+
+-- Toggle checkingEnabled with Ctrl + P
+UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
+    if not gameProcessedEvent then
+        if input.KeyCode == Enum.KeyCode.P and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+            checkingEnabled = not checkingEnabled
+            sendNotification(checkingEnabled and "Auto GunPickup ON" or "Auto GunPickup OFF")
+        end
+    end
+end)
+
+-- Periodic check for gun pickups
+task.spawn(function()
+    while true do
+        if checkingEnabled then
+            handleGunPickup()
+        end
+        task.wait(0.3) -- Frequent checking
+    end
+end)
+
+-- Reset cooldown for specific gun when a new one appears
+Workspace.GameStuff.Entities.ChildAdded:Connect(function(child)
+    if child.Name == "GunPickup" then
+        teleportedPickups[child] = nil
+    end
+end)
+
+
+
+
+
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local LP = Players.LocalPlayer
+
+-- Paths to events
+local path = workspace:WaitForChild("Events", 9e9):WaitForChild("Character", 9e9):WaitForChild("Abilities", 9e9)
+local event = workspace:WaitForChild("Events", 9e9):WaitForChild("Data", 9e9):WaitForChild("ChangeGadget", 9e9)
+
+-- List of gadgets to trigger
+local abilitylist = {
+ --  "Pocket Knife",
+  --  "Pan",
+   -- "Taser",
+  --  "Medkit",
+    "Garlic",
+  --  "Pepperspray",
+  --  "Smoke Grenade",
+   --  "Morphine",
+  --   "Energy Drink",
+    "Barricade",
+ --   "Night Vision Goggles",
+    "Defibrillator",
+    "Defibrillator",
+    "Defibrillator",
+    "Defibrillator",
+  --  "Pocket Knife"
+}
+
+-- Function to trigger only the listed gadgets
+local function activateGadgets()
+    print("Starting gadget sequence...")
+
+    for _, abilityName in ipairs(abilitylist) do
+        local abilityEvent = path:FindFirstChild(abilityName)
+
+        if abilityEvent then
+            print("Attempting to trigger:", abilityName)
+
+            -- Change gadget before using it
+            event:FireServer(abilityName, 1)
+
+            -- Fire RemoteEvent
+            if abilityEvent:IsA("RemoteEvent") then
+                abilityEvent:FireServer()
+                print("Fired RemoteEvent for:", abilityName)
+            end
+
+            -- Invoke RemoteFunction if it exists
+            if abilityEvent:IsA("RemoteFunction") then
+                abilityEvent:InvokeServer()
+                print("Invoked RemoteFunction for:", abilityName)
+            end
+
+            task.wait(0.5) -- Delay before next gadget
+        else
+            print("Gadget not found in path:", abilityName)
+        end
+    end
+
+    print("Completed gadget sequence.")
+
+    -- Remove unnecessary values from the humanoid
+    if LP.Character and LP.Character:FindFirstChild("Humanoid") then
+        for _, v in pairs(LP.Character.Humanoid:GetChildren()) do
+            if string.find(v.Name, "Given") then
+                v:Destroy()
+                print("Removed Given value:", v.Name)
+            end
+            if v:IsA("IntValue") or v:IsA("NumberValue") then
+                if v.Name == "BarricadesRemaining" and v.Value == 0 then
+                    v:Destroy()
+                    print("Removed BarricadesRemaining")
+                end
+                if v.Name == "BowArrowsRemaining" and v.Value == 0 then
+                    v:Destroy()
+                    print("Removed BowArrowsRemaining")
+                end
+                if v.Name == "TaserUses" and v.Value == 0 then
+                    v:Destroy()
+                    print("Removed TaserUses")
+                end
+            end
+        end
+    end
+end
+
+-- Keybind to trigger gadgets
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end -- Ignore if the game already processed input
+
+    if input.KeyCode == Enum.KeyCode.M and UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+        print("Ctrl + Shift + M pressed - Activating selected gadgets")
+        activateGadgets()
+    end
+end)
+
+game.StarterGui:SetCore("SendNotification", {
+   Title = "Keybind UI",
+   Text = "Ctrl + L. (keybind)",
+   Icon = "",
+   Duration = 5
+})
+
+loadstring(game:HttpGet('https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source'))()
