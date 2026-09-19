@@ -1,1 +1,1 @@
-
+loadstring(game:HttpGet('https://raw.githubusercontent.com/Jonmaster2007/Public-scripts/refs/heads/main/CanSam'))()
